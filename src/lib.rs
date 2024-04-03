@@ -6,6 +6,27 @@ use std::{
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
+/// Represents different HTTP status codes.
+pub enum HttpStatusCode {
+    Ok,
+    NotFound,
+    BadRequest,
+    InternalServerError,
+}
+
+impl HttpStatusCode {
+    /// Returns the status line corresponding to the HTTP status code.
+    pub fn status_line(&self) -> String {
+        let status = match self {
+            HttpStatusCode::Ok => "200 OK",
+            HttpStatusCode::NotFound => "404 NOT FOUND",
+            HttpStatusCode::BadRequest => "400 BAD REQUEST",
+            HttpStatusCode::InternalServerError => "500 INTERNAL SERVER ERROR",
+        };
+        format!("HTTP/1.1 {}", status)
+    }
+}
+
 struct Worker {
     id: usize,
     thread: Option<thread::JoinHandle<()>>,
@@ -39,13 +60,11 @@ pub struct ThreadPool {
 }
 
 impl ThreadPool {
-    /// 创建线程池
-    ///
-    /// `size`: 线程池中线程的数量
+    /// Constructs a new, filled thread pool with the specified capacity.
     ///
     /// # Panics
     ///
-    /// 在 `size` 为 `0` 时 panic
+    /// Panics if the new capacity is 0.
     pub fn new(size: usize) -> ThreadPool {
         assert!(size > 0);
         let (sender, receiver) = mpsc::channel();
@@ -80,3 +99,5 @@ impl Drop for ThreadPool {
         }
     }
 }
+
+// todo: test module

@@ -3,7 +3,7 @@ use std::{
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
 };
-use wavefront_sentinel::ThreadPool;
+use wavefront_sentinel::{HttpStatusCode, ThreadPool};
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:80").unwrap();
@@ -15,29 +15,48 @@ fn main() {
     }
 }
 
-/// 处理一个 TCP 流
-///
-/// 解析请求, 选择响应的信息和文件, 并进行响应
+/// Handles a TCP stream by parsing the request and responding to it.
 fn handle_connection(mut stream: TcpStream) {
-    // 读取请求的第 1 行
-    let reader = BufReader::new(&mut stream);
-    let request = reader.lines().next().unwrap().unwrap();
-
-    // 选择响应的信息和文件
-    let (status_line, filename) = if request == "GET / HTTP/1.1" {
-        ("HTTP/1.1 200 OK", "pages\\hello.html")
-    } else {
-        ("HTTP/1.1 404 NOT FOUND", "pages\\404.html")
+    // Read the first line from the stream, representing the request.
+    let request = match BufReader::new(&mut stream).lines().next() {
+        Some(Ok(line)) => line,
+        _ => {
+            // Respond with 400 if no request exists.
+            let error_response = format!(
+                "{}\r\nContent-Length: 0\r\n\r\n",
+                HttpStatusCode::BadRequest.status_line()
+            );
+            stream.write_all(error_response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+            return;
+        }
     };
 
-    // 响应
-    let contents = fs::read_to_string(filename).unwrap();
+    // Resolve the request.
+    let (filepath, status_code) = resolve_request(request);
+    let contents = fs::read_to_string(filepath).unwrap();
+
+    // Write response to the stream.
     let response = format!(
         "{}\r\nContent-Length: {}\r\n\r\n{}",
-        status_line,
+        status_code.status_line(),
         contents.len(),
         contents
     );
     stream.write_all(response.as_bytes()).unwrap();
     stream.flush().unwrap();
+}
+
+/// Resolves an HTTP request to determine the page path and status code.
+///
+/// # Returns
+///
+/// A tuple containing the resolved page path and the corresponding HTTP status code.
+// todo: add more page files
+fn resolve_request(request: String) -> (&'static str, HttpStatusCode) {
+    let path = request.split_whitespace().nth(1).unwrap_or("");
+    match path {
+        "/" => ("pages/index.html", HttpStatusCode::Ok),
+        _ => ("pages/404.html", HttpStatusCode::NotFound),
+    }
 }
