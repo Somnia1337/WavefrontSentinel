@@ -6,7 +6,7 @@ use std::{
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
-/// Represents different HTTP status codes.
+/// Represents HTTP status codes used in HTTP response messages.
 pub enum HttpStatusCode {
     Ok,
     NotFound,
@@ -16,14 +16,13 @@ pub enum HttpStatusCode {
 
 impl HttpStatusCode {
     /// Returns the status line corresponding to the HTTP status code.
-    pub fn status_line(&self) -> String {
-        let status = match self {
+    pub fn status_line(&self) -> &'static str {
+        match self {
             HttpStatusCode::Ok => "200 OK",
             HttpStatusCode::NotFound => "404 NOT FOUND",
             HttpStatusCode::BadRequest => "400 BAD REQUEST",
             HttpStatusCode::InternalServerError => "500 INTERNAL SERVER ERROR",
-        };
-        format!("HTTP/1.1 {}", status)
+        }
     }
 }
 

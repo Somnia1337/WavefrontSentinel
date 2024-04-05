@@ -17,32 +17,16 @@ fn main() {
 
 /// Handles a TCP stream by parsing the request and responding to it.
 fn handle_connection(mut stream: TcpStream) {
-    // Read the first line from the stream, representing the request.
-    let request = match BufReader::new(&mut stream).lines().next() {
-        Some(Ok(line)) => line,
-        _ => {
-            // Respond with 400 if no request exists.
-            let error_response = format!(
-                "{}\r\nContent-Length: 0\r\n\r\n",
-                HttpStatusCode::BadRequest.status_line()
-            );
-            stream.write_all(error_response.as_bytes()).unwrap();
-            stream.flush().unwrap();
-            return;
-        }
-    };
+    // Read the first line from the stream, representing client request.
+    // todo: error handling
+    let request = BufReader::new(&mut stream).lines().next().unwrap().unwrap();
 
-    // Resolve the request.
+    // Resolve client request.
     let (filepath, status_code) = resolve_request(request);
-    let contents = fs::read_to_string(filepath).unwrap();
+    let content = fs::read_to_string(filepath).unwrap();
 
-    // Write response to the stream.
-    let response = format!(
-        "{}\r\nContent-Length: {}\r\n\r\n{}",
-        status_code.status_line(),
-        contents.len(),
-        contents
-    );
+    // Respond.
+    let response = build_response(status_code, content);
     stream.write_all(response.as_bytes()).unwrap();
     stream.flush().unwrap();
 }
@@ -52,11 +36,21 @@ fn handle_connection(mut stream: TcpStream) {
 /// # Returns
 ///
 /// A tuple containing the resolved page path and the corresponding HTTP status code.
-// todo: add more page files
+// todo: build path from `request` and check (support more page files)
 fn resolve_request(request: String) -> (&'static str, HttpStatusCode) {
-    let path = request.split_whitespace().nth(1).unwrap_or("");
+    let path = request.split_whitespace().nth(1).unwrap();
     match path {
         "/" => ("pages/index.html", HttpStatusCode::Ok),
-        _ => ("pages/404.html", HttpStatusCode::NotFound),
+        _ if path.contains("/") => ("pages/404.html", HttpStatusCode::NotFound),
+        _ => ("", HttpStatusCode::BadRequest),
     }
+}
+
+fn build_response(status_code: HttpStatusCode, content: String) -> String {
+    format!(
+        "HTTP/1.1 {}\r\nContent-Length: {}\r\n\r\n{}",
+        status_code.status_line(),
+        content.len(),
+        content
+    )
 }
