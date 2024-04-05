@@ -1,6 +1,5 @@
-use std::sync::mpsc::Receiver;
 use std::{
-    sync::{mpsc, Arc, Mutex},
+    sync::{mpsc, mpsc::Receiver, Arc, Mutex},
     thread,
 };
 

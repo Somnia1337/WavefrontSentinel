@@ -1,8 +1,8 @@
-use std::path::PathBuf;
 use std::{
     fs,
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
+    path::PathBuf,
 };
 use wavefront_sentinel::{HttpStatusCode, ThreadPool};
 
