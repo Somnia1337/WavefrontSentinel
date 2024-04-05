@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::{
     fs,
     io::{prelude::*, BufReader},
@@ -18,34 +19,61 @@ fn main() {
 /// Handles a TCP stream by parsing the request and responding to it.
 fn handle_connection(mut stream: TcpStream) {
     // Read the first line from the stream, representing client request.
-    // todo: error handling
-    let request = BufReader::new(&mut stream).lines().next().unwrap().unwrap();
-
-    // Resolve client request.
-    let (filepath, status_code) = resolve_request(request);
-    let content = fs::read_to_string(filepath).unwrap();
-
-    // Respond.
-    let response = build_response(status_code, content);
+    let reader = BufReader::new(&mut stream);
+    let response = match reader.lines().next().and_then(|line| line.ok()) {
+        None => build_response(HttpStatusCode::BadRequest, String::new()),
+        Some(request) => {
+            // Resolve client request.
+            let (filepath, status_code) = resolve_request(&request);
+            let content = fs::read_to_string(filepath).unwrap();
+            build_response(status_code, content)
+        }
+    };
     stream.write_all(response.as_bytes()).unwrap();
     stream.flush().unwrap();
 }
 
-/// Resolves an HTTP request to determine the page path and status code.
+/// Resolves an HTTP request.
 ///
-/// # Returns
-///
-/// A tuple containing the resolved page path and the corresponding HTTP status code.
-// todo: build path from `request` and check (support more page files)
-fn resolve_request(request: String) -> (&'static str, HttpStatusCode) {
-    let path = request.split_whitespace().nth(1).unwrap();
-    match path {
-        "/" => ("pages/index.html", HttpStatusCode::Ok),
-        _ if path.contains("/") => ("pages/404.html", HttpStatusCode::NotFound),
-        _ => ("", HttpStatusCode::BadRequest),
+/// Returns a tuple, containing the path to the requested page and the corresponding `HttpStatusCode`.
+fn resolve_request(request: &str) -> (PathBuf, HttpStatusCode) {
+    match build_path(request) {
+        Ok(path) => {
+            if path.exists() {
+                (path, HttpStatusCode::Ok)
+            } else {
+                (PathBuf::from("pages/404.html"), HttpStatusCode::NotFound)
+            }
+        }
+        Err(_) => (PathBuf::from("pages/400.html"), HttpStatusCode::BadRequest),
     }
 }
 
+/// Builds a path to the requested page.
+///
+/// # Errors
+///
+/// Returns an `Err` if the HTTP request does not contain a path argument.
+fn build_path(request: &str) -> Result<PathBuf, ()> {
+    let mut path = PathBuf::from("pages");
+    match request.split_whitespace().nth(1) {
+        Some(request_path) if !request_path.is_empty() => {
+            let mut page_path = request_path.to_string();
+            if page_path == "/" {
+                path.push("index.html");
+            } else {
+                if !page_path.ends_with(".html") {
+                    page_path.push_str(".html");
+                }
+                path.push(page_path.trim_start_matches('/'));
+            }
+            Ok(path)
+        }
+        _ => Err(()),
+    }
+}
+
+/// Builds an HTTP response message.
 fn build_response(status_code: HttpStatusCode, content: String) -> String {
     format!(
         "HTTP/1.1 {}\r\nContent-Length: {}\r\n\r\n{}",
