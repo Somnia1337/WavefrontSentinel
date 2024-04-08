@@ -7,23 +7,27 @@ use std::{
 use wavefront_sentinel::{HttpStatusCode, ThreadPool};
 
 fn main() {
+    println!("> Starting up...");
     let listener = TcpListener::bind("127.0.0.1:80").unwrap();
     let pool = ThreadPool::new(10);
+    println!("> Started running.");
     for stream in listener.incoming().map(|s| s.unwrap()) {
         pool.execute(|| {
             handle_connection(stream);
         });
     }
+
+    // todo: elegant shutdown
 }
 
 /// Handles a TCP stream by parsing the request and responding to it.
 fn handle_connection(mut stream: TcpStream) {
-    // Read the first line from the stream, representing client request.
+    // Read the first line from the stream, representing request.
     let reader = BufReader::new(&mut stream);
     let response = match reader.lines().next().and_then(|line| line.ok()) {
         None => build_response(HttpStatusCode::BadRequest, String::new()),
         Some(request) => {
-            // Resolve client request.
+            // Resolve the request.
             let (filepath, status_code) = resolve_request(&request);
             let content = fs::read_to_string(filepath).unwrap();
             build_response(status_code, content)
@@ -35,9 +39,11 @@ fn handle_connection(mut stream: TcpStream) {
 
 /// Resolves an HTTP request.
 ///
-/// Returns a tuple, containing the path to the requested page and the corresponding `HttpStatusCode`.
+/// # Returns
+///
+/// A tuple, containing a `PathBuf` to the requested page and the corresponding `HttpStatusCode`.
 fn resolve_request(request: &str) -> (PathBuf, HttpStatusCode) {
-    match build_path(request) {
+    match build_path_to_page(request) {
         Ok(path) => {
             if path.exists() {
                 (path, HttpStatusCode::Ok)
@@ -51,10 +57,11 @@ fn resolve_request(request: &str) -> (PathBuf, HttpStatusCode) {
 
 /// Builds a path to the requested page.
 ///
-/// # Errors
+/// # Returns
 ///
-/// Returns an `Err` if the HTTP request does not contain a path argument.
-fn build_path(request: &str) -> Result<PathBuf, ()> {
+/// - A `PathBuf` containing the requested page if the process succeeds.
+/// - An `Err` if fails.
+fn build_path_to_page(request: &str) -> Result<PathBuf, ()> {
     let mut path = PathBuf::from("pages");
     match request.split_whitespace().nth(1) {
         Some(request_path) if !request_path.is_empty() => {
