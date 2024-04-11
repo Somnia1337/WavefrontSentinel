@@ -4,7 +4,8 @@ use std::{
     net::{TcpListener, TcpStream},
     path::PathBuf,
 };
-use wavefront_sentinel::{HttpStatusCode, ThreadPool};
+use wavefront_sentinel::HttpContentType::Html;
+use wavefront_sentinel::{HttpContentType, HttpStatusCode, ThreadPool};
 
 fn main() {
     println!("> Starting up...");
@@ -25,15 +26,15 @@ fn handle_connection(mut stream: TcpStream) {
     // Read the first line from the stream, representing request.
     let reader = BufReader::new(&mut stream);
     let response = match reader.lines().next().and_then(|line| line.ok()) {
-        None => build_response(HttpStatusCode::BadRequest, String::new()),
+        None => build_response(HttpStatusCode::BadRequest, vec![], Html),
         Some(request) => {
             // Resolve the request.
-            let (filepath, status_code) = resolve_request(&request);
-            let content = fs::read_to_string(filepath).unwrap();
-            build_response(status_code, content)
+            let (filepath, status_code, content_type) = resolve_request(&request);
+            let content = fs::read(filepath).unwrap();
+            build_response(status_code, content, content_type)
         }
     };
-    stream.write_all(response.as_bytes()).unwrap();
+    stream.write_all(&response).unwrap();
     stream.flush().unwrap();
 }
 
@@ -42,16 +43,29 @@ fn handle_connection(mut stream: TcpStream) {
 /// # Returns
 ///
 /// A tuple, containing a `PathBuf` to the requested page and the corresponding `HttpStatusCode`.
-fn resolve_request(request: &str) -> (PathBuf, HttpStatusCode) {
+fn resolve_request(request: &str) -> (PathBuf, HttpStatusCode, HttpContentType) {
     match build_path_to_page(request) {
         Ok(path) => {
             if path.exists() {
-                (path, HttpStatusCode::Ok)
+                let extension = path.extension().unwrap();
+                (
+                    path.clone(),
+                    HttpStatusCode::Ok,
+                    HttpContentType::from(extension.to_str().unwrap()),
+                )
             } else {
-                (PathBuf::from("pages/404.html"), HttpStatusCode::NotFound)
+                (
+                    PathBuf::from("pages/404.html"),
+                    HttpStatusCode::NotFound,
+                    Html,
+                )
             }
         }
-        Err(_) => (PathBuf::from("pages/400.html"), HttpStatusCode::BadRequest),
+        Err(_) => (
+            PathBuf::from("pages/400.html"),
+            HttpStatusCode::BadRequest,
+            Html,
+        ),
     }
 }
 
@@ -69,7 +83,7 @@ fn build_path_to_page(request: &str) -> Result<PathBuf, ()> {
             if page_path == "/" {
                 path.push("index.html");
             } else {
-                if !page_path.ends_with(".html") {
+                if !page_path.contains(".") {
                     page_path.push_str(".html");
                 }
                 path.push(page_path.trim_start_matches('/'));
@@ -81,11 +95,19 @@ fn build_path_to_page(request: &str) -> Result<PathBuf, ()> {
 }
 
 /// Builds an HTTP response message.
-fn build_response(status_code: HttpStatusCode, content: String) -> String {
-    format!(
-        "HTTP/1.1 {}\r\nContent-Length: {}\r\n\r\n{}",
-        status_code.status_line(),
-        content.len(),
-        content
-    )
+fn build_response(
+    status_code: HttpStatusCode,
+    content: Vec<u8>,
+    content_type: HttpContentType,
+) -> Vec<u8> {
+    let content_length = content.len();
+    let content_type = content_type.content_type();
+    let status_line = status_code.status_line();
+    let response = format!(
+        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
+        status_line, content_type, content_length
+    );
+    let mut response_bytes = response.into_bytes();
+    response_bytes.extend_from_slice(&content);
+    response_bytes
 }

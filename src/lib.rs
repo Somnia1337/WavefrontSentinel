@@ -25,6 +25,37 @@ impl HttpStatusCode {
     }
 }
 
+pub enum HttpContentType {
+    Html,
+    Css,
+    Jpg,
+    Png,
+}
+
+impl HttpContentType {
+    pub fn content_type(&self) -> &str {
+        match self {
+            HttpContentType::Html => "text/html",
+            HttpContentType::Css => "text/css",
+            HttpContentType::Jpg => "image/jpg",
+            HttpContentType::Png => "image/png",
+        }
+    }
+}
+
+impl From<&str> for HttpContentType {
+    fn from(extension: &str) -> Self {
+        match extension {
+            "html" => HttpContentType::Html,
+            "css" => HttpContentType::Css,
+            "jpg" => HttpContentType::Jpg,
+            "jpeg" => HttpContentType::Jpg,
+            "png" => HttpContentType::Png,
+            _ => HttpContentType::Png, // 默认为 PNG 类型
+        }
+    }
+}
+
 /// Represents a working thread.
 struct Worker {
     id: usize,
